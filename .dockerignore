@@ -1,0 +1,21 @@
+# 构建上下文 = 项目根
+# ⚠️ 不可排除 ffmpeg/bin/ 与 model/ —— 镜像需要它们
+
+.git
+.github
+.vscode
+
+# 运行时数据与临时文件
+tmp
+data
+test_results
+*.log
+
+# node
+node_modules
+npm-debug.log*
+
+# 其它
+.gitignore
+*.md
+!README.md

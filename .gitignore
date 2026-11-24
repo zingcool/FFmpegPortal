@@ -1,0 +1,26 @@
+# 依赖
+node_modules/
+npm-debug.log*
+
+# 运行时数据（容器内为 /data）
+data/
+tmp/
+
+# 评分过程产物
+vmaf_result_*.json
+*.scaled.mp4
+video_quality_report_*.xlsx
+video_quality_plot_*.png
+
+# 编辑器和系统
+.vscode/
+.DS_Store
+*.log
+
+# ffmpeg 二进制（每个约 192MB，超出 GitHub 单文件 100MB 上限，不入库）
+# 克隆后请执行：./scripts/setup-assets.sh
+# 需要离线分发时用 Git LFS 或制品库，不要直接提交。
+ffmpeg/bin/
+
+# VMAF 模型（19KB，体积无害，**入库**）——不要加入忽略
+# model/vmaf_v0.6.1.json

@@ -1,0 +1,39 @@
+# FFmpegPortal —— 单机部署
+#
+#   docker compose up -d --build
+#   curl -s localhost:3000/readyz | jq
+#   浏览器打开 http://localhost:3000
+
+services:
+  ffmpeg-portal:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ffmpeg-portal:1.0.0
+    container_name: ffmpeg-portal
+    ports:
+      - "3000:3000"
+    volumes:
+      - portal-data:/data
+    environment:
+      MAX_FILE_MB: "2048"          # 单文件上限
+      MAX_JOB_MB: "5120"           # 单任务总量上限
+      MAX_QUEUE: "20"              # 排队任务上限，超出返回 429
+      CONCURRENCY: "1"             # 同时运行的 ffmpeg 进程数
+      # FFMPEG_THREADS: "4"        # 留空则按 cgroup 配额自动计算
+      TIMEOUT_MS: "1800000"        # 单视频评分超时 30min
+      RETENTION_DAYS: "7"          # 任务与报告保留天数
+      KEEP_INPUTS: "false"         # 报告生成后删除待测原文件
+      LOG_LEVEL: "info"
+      # AUTH_TOKEN: "change-me"    # 内网可留空；设置后所有 /api 需 Bearer
+    cpus: 4.0
+    mem_limit: 4g
+    shm_size: 1gb
+    read_only: true                # 根文件系统只读
+    tmpfs:
+      - /tmp:size=2g
+    stop_grace_period: 20s         # 留足优雅停机时间
+    restart: unless-stopped
+
+volumes:
+  portal-data:

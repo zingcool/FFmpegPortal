@@ -1,0 +1,22 @@
+{
+  "name": "ffmpeg-portal",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "视频画质评分 Web 服务：单参考 + 多待测批量对比（PSNR / SSIM / VMAF）",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "selftest": "node scripts/selftest.js",
+    "smoke:api": "bash scripts/smoke-api.sh",
+    "smoke:ui": "node scripts/smoke-ui.mjs",
+    "smoke:robust": "node scripts/smoke-robust.mjs"
+  },
+  "dependencies": {
+    "@fastify/multipart": "^10.1.9",
+    "@fastify/static": "^10.1.12",
+    "fastify": "^5.12.8"
+  }
+}

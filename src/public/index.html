@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>视频画质评分服务</title>
+<style>
+  :root { color-scheme: light dark; --line: rgba(128,128,128,.3); --bg2: rgba(128,128,128,.08); }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+         margin: 0; padding: 28px 18px 70px; line-height: 1.6; max-width: 1000px; margin-inline: auto; }
+  h1 { font-size: 1.45rem; margin: 0 0 .15rem; }
+  h2 { font-size: 1rem; margin: 0 0 .8rem; }
+  .sub { opacity: .62; margin: 0 0 1.5rem; font-size: .92rem; }
+  .card { border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin: 0 0 16px; }
+  label { font-size: .9rem; }
+  .row { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+  .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+  .field > span { font-size: .82rem; opacity: .7; }
+  input[type=number], select, input[type=file] {
+    font: inherit; font-size: .9rem; padding: 6px 9px; border: 1px solid var(--line);
+    border-radius: 8px; background: transparent; color: inherit; max-width: 100%;
+  }
+  input[type=file] { padding: 10px; width: 100%; border-style: dashed; }
+  button { font: inherit; font-size: .92rem; padding: 8px 18px; border-radius: 9px; cursor: pointer;
+           border: 1px solid var(--line); background: var(--bg2); color: inherit; }
+  button.primary { background: #2563eb; border-color: #2563eb; color: #fff; font-weight: 600; }
+  button.primary:disabled { opacity: .45; cursor: not-allowed; }
+  button.danger { color: #b91c1c; }
+  .checks { display: flex; gap: 18px; flex-wrap: wrap; }
+  .checks label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .progress { height: 10px; background: var(--bg2); border-radius: 999px; overflow: hidden; margin: 10px 0 6px; }
+  .progress > div { height: 100%; width: 0%; background: #2563eb; transition: width .3s; }
+  table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+  th, td { text-align: left; padding: 6px 9px; border-bottom: 1px solid var(--line); }
+  th { font-size: .8rem; opacity: .7; font-weight: 600; }
+  td.num { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .good { color: #15803d; } .ok { color: #4d7c0f; } .warn { color: #b45309; } .bad { color: #c2410c; } .awful { color: #b91c1c; }
+  .muted { opacity: .6; font-size: .85rem; }
+  .err { border: 1px solid #b91c1c; color: #b91c1c; border-radius: 10px; padding: 10px 14px; margin: 12px 0;
+         font-size: .88rem; white-space: pre-wrap; }
+  .links a { margin-right: 16px; }
+  .hidden { display: none !important; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .74rem; border: 1px solid var(--line); }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .86em; }
+</style>
+</head>
+<body>
+<h1>视频画质评分</h1>
+<p class="sub">单参考 + 多待测批量对比 · PSNR / SSIM / VMAF</p>
+
+<div id="globalErr" class="err hidden"></div>
+
+<!-- 就绪状态 -->
+<div class="card" id="statusCard">
+  <h2>服务状态</h2>
+  <div id="statusLine" class="muted">检查中…</div>
+  <div id="statusDetail" class="muted" style="margin-top:6px;font-size:.8rem"></div>
+</div>
+
+<!-- 上传表单 -->
+<form id="form" class="card">
+  <h2>1. 选择参考视频</h2>
+  <div class="row" style="margin-bottom:10px">
+    <label><input type="radio" name="refMode" value="new" checked /> 上传新文件</label>
+    <label><input type="radio" name="refMode" value="existing" /> 复用已有参考</label>
+  </div>
+  <div id="refNew" class="field">
+    <input type="file" id="refFile" accept="video/*,.mp4,.mov,.mkv,.webm,.avi,.ts,.m2ts" />
+    <span>参考片 = 评分的基准，待测视频会先归一化到它的分辨率</span>
+  </div>
+  <div id="refExisting" class="field hidden">
+    <select id="refSelect"><option value="">（加载中…）</option></select>
+    <span>已上传过的参考视频，免于重复传输</span>
+  </div>
+
+  <h2 style="margin-top:1.2rem">2. 选择待测视频（可多选）</h2>
+  <div class="field">
+    <input type="file" id="targetFiles" multiple accept="video/*,.mp4,.mov,.mkv,.webm,.avi,.ts,.m2ts" />
+    <span id="targetHint">支持一次选择多个文件</span>
+  </div>
+
+  <h2 style="margin-top:1.2rem">3. 评分指标</h2>
+  <div class="checks" style="margin-bottom:14px">
+    <label><input type="checkbox" class="metric" value="psnr" checked /> PSNR（快）</label>
+    <label><input type="checkbox" class="metric" value="ssim" checked /> SSIM（快）</label>
+    <label><input type="checkbox" class="metric" value="vmaf" checked /> VMAF（准，最耗时）</label>
+  </div>
+
+  <details style="margin-bottom:14px">
+    <summary class="muted" style="cursor:pointer">高级选项</summary>
+    <div class="row" style="margin-top:10px">
+      <div class="field">
+        <span>归一化帧率（留空=取两路较小值）</span>
+        <input type="number" id="fpsOverride" min="1" max="120" step="0.001" placeholder="自动" style="width:150px" />
+      </div>
+      <div class="field">
+        <span>只比较前 N 秒（留空=取公共时长）</span>
+        <input type="number" id="maxDurationS" min="1" step="0.1" placeholder="自动" style="width:150px" />
+      </div>
+    </div>
+  </details>
+
+  <div class="row">
+    <button type="submit" class="primary" id="submitBtn">开始评分</button>
+    <span class="muted" id="submitHint"></span>
+  </div>
+</form>
+
+<!-- 进度与结果 -->
+<div class="card hidden" id="jobCard">
+  <h2 id="jobTitle">任务进度</h2>
+  <div class="progress"><div id="bar"></div></div>
+  <div class="muted" id="jobMeta"></div>
+  <div class="row" style="margin-top:12px">
+    <button type="button" class="danger hidden" id="cancelBtn">取消任务</button>
+  </div>
+  <div id="jobErr" class="err hidden"></div>
+  <table style="margin-top:14px">
+    <thead><tr><th>#</th><th>文件</th><th>状态</th><th>PSNR</th><th>SSIM</th><th>VMAF</th><th>耗时</th><th>说明</th></tr></thead>
+    <tbody id="jobRows"></tbody>
+  </table>
+  <div class="links hidden" id="jobLinks" style="margin-top:16px">
+    <strong>报告：</strong>
+    <a id="linkHtml" href="#" target="_blank" rel="noopener">HTML 报告</a>
+    <a id="linkCsv" href="#">CSV 下载</a>
+    <a id="linkJson" href="#" target="_blank" rel="noopener">result.json</a>
+  </div>
+</div>
+
+<p class="muted" style="margin-top:24px">
+  命令行用法：<code>curl -F "file=@ref.mp4" /api/references</code> →
+  <code>curl -F "referenceId=..." -F "targets=@a.mp4" /api/jobs</code>
+</p>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const fmt = (n, d = 2) => (n === null || n === undefined || Number.isNaN(Number(n)) ? '—' : Number(n).toFixed(d));
+
+  const tone = (m, v) => {
+    if (v === null || v === undefined) return '';
+    const x = Number(v);
+    if (m === 'vmaf') return x >= 90 ? 'good' : x >= 80 ? 'ok' : x >= 60 ? 'warn' : x >= 40 ? 'bad' : 'awful';
+    if (m === 'psnr') return x >= 40 ? 'good' : x >= 30 ? 'ok' : x >= 25 ? 'warn' : 'bad';
+    if (m === 'ssim') return x >= 0.98 ? 'good' : x >= 0.95 ? 'ok' : x >= 0.9 ? 'warn' : 'bad';
+    return '';
+  };
+
+  let pollTimer = null;
+  let currentJob = null;
+
+  function showError(msg) {
+    const el = $('globalErr');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
+  function clearError() { $('globalErr').classList.add('hidden'); }
+
+  async function api(url, options) {
+    const res = await fetch(url, options);
+    const text = await res.text();
+    let body = null;
+    try { body = text ? JSON.parse(text) : null; } catch { body = { raw: text }; }
+    if (!res.ok) {
+      const e = body && body.error ? body.error : { code: res.status, message: text || res.statusText };
+      throw Object.assign(new Error(`[${e.code}] ${e.message}`), { code: e.code, body });
+    }
+    return body;
+  }
+
+  // ---------- 就绪状态 ----------
+  async function loadStatus() {
+    try {
+      const res = await fetch('/readyz');
+      const body = await res.json();
+      const okCount = (body.checks || []).filter((c) => c.ok).length;
+      const total = (body.checks || []).length;
+      $('statusLine').innerHTML = res.ok
+        ? '<span class="good">● 就绪</span>'
+        : `<span class="bad">● 未就绪</span>（${total - okCount}/${total} 项检查未通过，评分可能失败）`;
+      const bad = (body.checks || []).filter((c) => !c.ok).map((c) => `${c.name}: ${c.detail}`);
+      $('statusDetail').textContent = bad.length ? bad.join('；') : (body.versions && body.versions.ffmpeg ? body.versions.ffmpeg.split('Copyright')[0] : '');
+    } catch (err) {
+      $('statusLine').innerHTML = `<span class="bad">● 无法连接服务</span>`;
+    }
+  }
+
+  // ---------- 参考视频列表 ----------
+  async function loadReferences() {
+    try {
+      const data = await api('/api/references?limit=100');
+      const sel = $('refSelect');
+      sel.innerHTML = '';
+      if (!data.items.length) {
+        sel.innerHTML = '<option value="">（暂无已上传的参考视频）</option>';
+        return;
+      }
+      for (const r of data.items) {
+        const o = document.createElement('option');
+        o.value = r.referenceId;
+        const p = r.probe || {};
+        o.textContent = `${r.origName} — ${p.width}×${p.height} · ${fmt(p.fps, 2)}fps · ${fmt(p.durationS, 1)}s`;
+        sel.appendChild(o);
+      }
+    } catch (err) {
+      $('refSelect').innerHTML = '<option value="">（加载失败）</option>';
+    }
+  }
+
+  // ---------- 交互 ----------
+  document.querySelectorAll('input[name=refMode]').forEach((r) => {
+    r.addEventListener('change', () => {
+      const mode = document.querySelector('input[name=refMode]:checked').value;
+      $('refNew').classList.toggle('hidden', mode !== 'new');
+      $('refExisting').classList.toggle('hidden', mode !== 'existing');
+    });
+  });
+
+  $('targetFiles').addEventListener('change', () => {
+    const n = $('targetFiles').files.length;
+    $('targetHint').textContent = n ? `已选择 ${n} 个文件（共 ${(Array.from($('targetFiles').files).reduce((a, f) => a + f.size, 0) / 1048576).toFixed(1)} MB）` : '支持一次选择多个文件';
+  });
+
+  // ---------- 提交 ----------
+  $('form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    clearError();
+
+    const metrics = Array.from(document.querySelectorAll('.metric:checked')).map((c) => c.value);
+    if (!metrics.length) return showError('请至少选择一个评分指标');
+
+    const mode = document.querySelector('input[name=refMode]:checked').value;
+    const targets = $('targetFiles').files;
+    if (!targets.length) return showError('请选择至少一个待测视频');
+
+    const fd = new FormData();
+    if (mode === 'existing') {
+      const id = $('refSelect').value;
+      if (!id) return showError('请选择一个已有的参考视频');
+      fd.append('referenceId', id);
+    } else {
+      const ref = $('refFile').files[0];
+      if (!ref) return showError('请选择参考视频文件');
+      fd.append('reference', ref, ref.name);
+    }
+    for (const f of targets) fd.append('targets', f, f.name);
+    fd.append('metrics', metrics.join(','));
+    if ($('fpsOverride').value) fd.append('fpsOverride', $('fpsOverride').value);
+    if ($('maxDurationS').value) fd.append('maxDurationS', $('maxDurationS').value);
+
+    const btn = $('submitBtn');
+    btn.disabled = true;
+    $('submitHint').textContent = '上传中…（大文件较慢）';
+    try {
+      const job = await api('/api/jobs', { method: 'POST', body: fd });
+      $('submitHint').textContent = '';
+      currentJob = job.jobId;
+      renderJob({ jobId: job.jobId, status: 'queued', metrics: job.metrics, progress: { total: job.items.length, done: 0, failed: 0, pending: job.items.length }, items: job.items.map((i) => ({ ...i, status: 'queued' })) });
+      $('jobCard').classList.remove('hidden');
+      $('jobCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      startPolling(job.jobId);
+    } catch (err) {
+      showError(`创建任务失败：${err.message}`);
+      btn.disabled = false;
+      $('submitHint').textContent = '';
+    }
+  });
+
+  // ---------- 轮询 ----------
+  function startPolling(jobId) {
+    stopPolling();
+    pollTimer = setInterval(async () => {
+      try {
+        const d = await api(`/api/jobs/${jobId}`);
+        renderJob(d);
+        if (['done', 'failed', 'canceled'].includes(d.status)) {
+          stopPolling();
+          $('submitBtn').disabled = false;
+          loadReferences();
+        }
+      } catch (err) {
+        stopPolling();
+        showError(`查询进度失败：${err.message}`);
+        $('submitBtn').disabled = false;
+      }
+    }, 1000);
+  }
+  function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+
+  // ---------- 渲染 ----------
+  const STATUS_TEXT = { queued: '排队中', probing: '探测中', running: '评分中', done: '已完成', failed: '失败', skipped: '已跳过', canceled: '已取消' };
+
+  function renderJob(d) {
+    const p = d.progress || { total: 0, done: 0, failed: 0, pending: 0 };
+    const finished = (p.done || 0) + (p.failed || 0) + (p.skipped || 0);
+    const pct = p.total ? Math.round((finished / p.total) * 100) : 0;
+    $('bar').style.width = `${pct}%`;
+
+    $('jobTitle').textContent = `任务 ${d.jobId} — ${STATUS_TEXT[d.status] || d.status}`;
+    const norm = d.normalization && d.normalization.width ? ` · 比较基准 ${d.normalization.width}×${d.normalization.height} @ ${d.normalization.fps}fps` : '';
+    $('jobMeta').textContent = `进度 ${finished}/${p.total}（成功 ${p.done || 0}，失败 ${p.failed || 0}）${norm}`;
+
+    $('cancelBtn').classList.toggle('hidden', !['queued', 'running'].includes(d.status));
+
+    const rows = (d.items || []).map((it) => {
+      const m = it.metrics || {};
+      const cell = (name, digits) => {
+        const v = m[name] ? m[name].mean : null;
+        let sub = '';
+        if (name === 'vmaf' && m.vmaf && m.vmaf.min != null) sub = ` <span class="muted" style="font-size:.75em">min ${fmt(m.vmaf.min)}</span>`;
+        if (name === 'psnr' && m.psnr && m.psnr.min != null) sub = ` <span class="muted" style="font-size:.75em">min ${fmt(m.psnr.min)}</span>`;
+        return `<td class="num ${tone(name, v)}">${fmt(v, digits)}${sub}</td>`;
+      };
+      return `<tr>
+        <td>${it.seq}</td>
+        <td title="${esc(it.name)}">${esc(it.name)}</td>
+        <td><span class="badge ${it.status === 'done' ? 'good' : it.status === 'failed' ? 'awful' : ''}">${esc(STATUS_TEXT[it.status] || it.status)}</span></td>
+        ${cell('psnr', 2)}${cell('ssim', 4)}${cell('vmaf', 2)}
+        <td class="num">${it.elapsedMs ? (it.elapsedMs / 1000).toFixed(1) + 's' : '—'}</td>
+        <td class="muted" style="font-size:.78rem">${esc(it.error || (it.compared && it.compared.seconds ? `比较 ${it.compared.seconds}s` : ''))}</td>
+      </tr>`;
+    }).join('');
+    $('jobRows').innerHTML = rows || '<tr><td colspan="8" class="muted">等待中…</td></tr>';
+
+    if (d.status === 'done') {
+      $('jobLinks').classList.remove('hidden');
+      $('linkHtml').href = `/api/jobs/${d.jobId}/report.html`;
+      $('linkCsv').href = `/api/jobs/${d.jobId}/report.csv`;
+      $('linkJson').href = `/api/jobs/${d.jobId}/result.json`;
+    } else {
+      $('jobLinks').classList.add('hidden');
+    }
+
+    const errEl = $('jobErr');
+    if (d.error) { errEl.textContent = `任务错误：${d.error}`; errEl.classList.remove('hidden'); }
+    else errEl.classList.add('hidden');
+  }
+
+  $('cancelBtn').addEventListener('click', async () => {
+    if (!currentJob) return;
+    try {
+      await api(`/api/jobs/${currentJob}/cancel`, { method: 'POST' });
+    } catch (err) {
+      showError(`取消失败：${err.message}`);
+    }
+  });
+
+  loadStatus();
+  loadReferences();
+  setInterval(loadStatus, 30000);
+})();
+</script>
+</body>
+</html>
