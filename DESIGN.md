@@ -585,7 +585,7 @@ volumes:
 
 | 坑 | 事实 | 应对 |
 |---|---|---|
-| `ffmpeg/` 被 `.gitignore` 忽略 | `git check-ignore` 确认 `.gitignore:19` | CI 里需 `scripts/setup-assets.sh`（或内网制品库）；本地构建直接可用 |
+| `ffmpeg/bin/` 被 `.gitignore` 忽略 | 二进制各约 168MB，超出仓库单文件限制 | `scripts/setup-assets.sh` 从 FFmpeg-Builds（GitHub）下载并校验 libvmaf；无外网时 `--offline` 从本地复制 |
 | `model/` **未被 git 跟踪**（也未忽略） | `git ls-files model/` 为空 | **建议把 `model/vmaf_v0.6.1.json`（19KB）纳入版本管理**，否则干净克隆后构建失败 |
 | 二进制仅 x86-64 | `file` 确认 ELF x86-64 | 构建机与运行机同为 x86-64；arm 需另找 ffmpeg 源 |
 | GPL 版 ffmpeg | 配置含 `--enable-gpl` | 内部部署无碍；对外分发镜像需合规评估 |
@@ -845,7 +845,8 @@ PSNR average:25.757786 (min:24.973988)
 | 3 | `/data` 不可写时报 SQLite 堆栈 | 部署最常见配置错误难以自查 | 启动预检，输出可操作中文提示并以 `exit 1` 退出 |
 | 4 | 本地 `npm start` 默认 `DATA_DIR=/data` | 无权限创建，开箱不可用 | 默认改为项目内 `./data`；容器仍由 `ENV DATA_DIR=/data` 覆盖 |
 | 5 | `selftest` 不创建 `DATA_DIR` | 首次运行误报「环境不可用」 | 脚本内先 `ensureDataDirs()` |
-| 6 | ffmpeg 二进制（各 192MB）超出仓库单文件限制 | 无法推送到 GitHub | `.gitignore` 排除 `ffmpeg/bin/`，改用 `scripts/setup-assets.sh` 置备；README/DEPLOYMENT 显著标注 |
+| 6 | ffmpeg 二进制超出仓库单文件限制（GitHub 100MB） | 无法推送到 GitHub | `.gitignore` 排除 `ffmpeg/bin/`；`scripts/setup-assets.sh` 改为**从 FFmpeg-Builds（GitHub）下载**并强制校验 libvmaf，另支持 `--offline` 本地复制与固定版本+sha256 |
+| 7 | 原始 ffbuild 自建二进制无公开下载来源 | 新机器无法置备资产 | 改用 FFmpeg-Builds 的 `n8.1` linux64 GPL 静态构建（含 libvmaf）。实测 PSNR/SSIM **逐位一致**，VMAF 差 **+0.000182**；镜像由 912MB 降至 **855MB** |
 
 ### 19.1 修复后实测的停机与恢复语义
 

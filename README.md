@@ -28,9 +28,10 @@
 
 > 生产部署（含反向代理、资源规划、运维手册）请看 [DEPLOYMENT.md](DEPLOYMENT.md)。
 
-> ⚠️ **克隆后第一步**：`ffmpeg` 二进制（各约 192MB）不入库，需先置备资产，否则无法运行：
+> ⚠️ **克隆后第一步**：`ffmpeg` 二进制不入库，需先置备，否则无法运行：
 > ```bash
-> ./scripts/setup-assets.sh          # 或 ASSET_SOURCE=/path/to/assets ./scripts/setup-assets.sh
+> ./scripts/setup-assets.sh            # 从 GitHub（FFmpeg-Builds）下载并校验
+> ./scripts/setup-assets.sh --offline  # 离线：从本地已有资产复制
 > ```
 
 ### 方式一：Docker（推荐）
@@ -50,10 +51,23 @@ npm ci
 DATA_DIR=./data npm start
 ```
 
-若 `ffmpeg/bin/` 或 `model/` 缺失：
+若 `ffmpeg/bin/` 缺失（新克隆的仓库一定缺失）：
 
 ```bash
-./scripts/setup-assets.sh        # 或 ASSET_SOURCE=/path/to/assets ./scripts/setup-assets.sh
+./scripts/setup-assets.sh            # 从 GitHub 下载（约 150MB，含 ffmpeg + ffprobe，跳过 ffplay）
+./scripts/setup-assets.sh --offline  # 无外网时，从本地已有资产复制
+```
+
+下载来源是 [FFmpeg-Builds](https://github.com/FFmpeg-Builds/FFmpeg-Builds) 的 linux64 **GPL 静态构建**
+（默认 n8.1 稳定分支）。脚本会**强制校验** `libvmaf` / `psnr` / `ssim` 滤波器存在，缺失即报错退出。
+
+固定版本（可复现构建）：
+
+```bash
+FFMPEG_URL=https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-11-23-12-43/ffmpeg-n8.1.3-39-g660b5aa7db-linux64-gpl-8.1.tar.xz \
+  ./scripts/setup-assets.sh --download
+
+# 还可加 FFMPEG_SHA256=<sha256> 做完整性校验
 ```
 
 ---
@@ -176,7 +190,7 @@ public/index.html ──multipart──▶ Fastify
 ├── Dockerfile              # 多阶段构建（上下文=项目根）
 ├── docker-compose.yml
 ├── package.json
-├── ffmpeg/bin/             # ffmpeg + ffprobe（必需资产，约 400MB，**不入库**）
+├── ffmpeg/bin/             # ffmpeg + ffprobe（运行资产，约 335MB，**不入库**，脚本置备）
 ├── model/vmaf_v0.6.1.json  # VMAF 模型（入库）
 ├── src/
 │   ├── server.js           # 入口：插件、错误处理、优雅停机

@@ -75,23 +75,71 @@ docker tag docker.m.daocloud.io/library/node:24-bookworm-slim node:24-bookworm-s
 ### 1.5 构建上下文里必须存在的资产
 
 ```
-ffmpeg/bin/ffmpeg        约 192 MB
-ffmpeg/bin/ffprobe       约 192 MB
+ffmpeg/bin/ffmpeg        约 168 MB
+ffmpeg/bin/ffprobe       约 168 MB
 model/vmaf_v0.6.1.json   19 KB
 ```
 
 **镜像里不装任何 apt 包**：`node:24-bookworm-slim` 自带 glibc 2.36（二进制只需 2.28）与唯一额外依赖 `libgcc_s.so.1`。
 
-**这三个文件中，`ffmpeg/bin/*` 不入 git 仓库**（每个约 192MB，超出 GitHub 单文件 100MB 上限）；`model/vmaf_v0.6.1.json`（19KB）已入库。
+**这三个文件中，`ffmpeg/bin/*` 不入 git 仓库**（每个约 168MB，超出 GitHub 单文件 100MB 上限）；`model/vmaf_v0.6.1.json`（19KB）已入库。
 
 因此**新克隆的仓库首次部署前必须先置备**：
 
 ```bash
-./scripts/setup-assets.sh                                    # 自动探测常见位置
-ASSET_SOURCE=/path/to/assets ./scripts/setup-assets.sh        # 指定来源
+./scripts/setup-assets.sh            # 从 GitHub 下载（默认）
+./scripts/setup-assets.sh --offline  # 从本地已有资产复制（无外网时）
 ```
 
-脚本要求来源目录下存在 `ffmpeg/bin/ffmpeg`、`ffmpeg/bin/ffprobe`、`model/vmaf_v0.6.1.json`。
+#### 下载模式（默认）
+
+来源于 [FFmpeg-Builds](https://github.com/FFmpeg-Builds/FFmpeg-Builds)（GitHub 上的 ffmpeg 构建仓库）
+的 **linux64 GPL 静态构建**，默认取 `n8.1` 稳定分支、`latest` 滚动发布：
+
+```
+https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-linux64-gpl-8.1.tar.xz
+```
+
+- 只解出 `ffmpeg` 与 `ffprobe`（**不装 ffplay**，省约 170MB）
+- 安装后**强制校验** `libvmaf` / `psnr` / `ssim` 滤波器，缺任一即报错退出
+- 需要 `curl`（或 `wget`）+ `tar`（支持 xz）
+
+可调环境变量：
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `FFMPEG_BRANCH` | `n8.1` | `n8.1` / `n9.0` / `master` |
+| `FFMPEG_LICENSE` | `gpl` | `gpl` / `lgpl`（**lgpl 构建通常不含 libvmaf，不建议**） |
+| `FFMPEG_URL` | 空 | 完整下载地址，覆盖上面的组合，用于**固定版本** |
+| `FFMPEG_SHA256` | 空 | 压缩包 sha256，设置后强制校验 |
+
+**固定版本示例**（推荐用于需要结果可复现的生产环境）：
+
+```bash
+FFMPEG_URL=https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-11-23-12-43/ffmpeg-n8.1.3-39-g660b5aa7db-linux64-gpl-8.1.tar.xz \
+FFMPEG_SHA256=255b73431adc3c14f91533b6cf08090c0b1314f6789761140a196f820f6347a2 \
+  ./scripts/setup-assets.sh --download
+```
+
+带版本号的 `autobuild-*` 标签资产是**不可变**的，`latest` 标签的资产会被覆盖。
+
+#### 离线模式（`--offline`）
+
+按顺序在本地候选目录找现成资产并复制：`$ASSET_SOURCE` → 项目自身 → `$ROOT/../python-autotest`
+→ `$HOME/src/python-autotest` → `$HOME/src/perf-autotest`。要求来源含 `ffmpeg/bin/ffmpeg`、
+`ffmpeg/bin/ffprobe`、`model/vmaf_v0.6.1.json`。
+
+#### 版本差异对分数的影响
+
+本服务最初使用的是一份 ffbuild 自建二进制（`N-122953`），改用 FFmpeg-Builds 的 `n8.1.3` 后实测：
+
+| 指标 | 原二进制 | FFmpeg-Builds n8.1.3 | 差异 |
+|---|---|---|---|
+| PSNR | 29.808674 | 29.808674 | **完全一致** |
+| SSIM | 0.923312 | 0.923312 | **完全一致** |
+| VMAF | 64.165984 | 64.166166 | **+0.000182** |
+
+PSNR/SSIM 逐位一致；VMAF 有约 1e-4 量级的实现差异（libvmaf 版本不同）。跨部署环境做横向对比时，应固定同一 `FFMPEG_URL`。
 
 脚本会校验 `libvmaf` 滤波器是否存在，不存在则报错退出。
 
