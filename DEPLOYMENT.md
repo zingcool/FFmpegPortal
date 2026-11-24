@@ -2,7 +2,7 @@
 
 > 适用版本：**1.0.0**（镜像 `ffmpeg-portal:1.0.0`）
 > 面向：负责把服务部署到服务器、并长期运维它的人
-> 配套文档：[README.md](README.md)（功能与 API）、本文（部署与运维）
+> 配套文档：[README.md](README.md)（功能与 API）、[DESIGN.md](DESIGN.md)（设计决策与原理）、本文（部署与运维）
 
 ---
 

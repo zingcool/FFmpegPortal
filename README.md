@@ -5,6 +5,7 @@
 从 `python-autotest` 仓库的离线评分脚本演进而来，重写为可部署的服务：Node.js（Fastify）+ SQLite + 文件存储 + Docker。
 
 > 📘 **部署到服务器、配置调优、故障排查、备份恢复** → 见 [DEPLOYMENT.md](DEPLOYMENT.md)
+> 🧭 **设计决策、评分管线原理、API 契约、实施记录** → 见 [DESIGN.md](DESIGN.md)
 
 ---
 
